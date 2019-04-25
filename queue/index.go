@@ -1,4 +1,4 @@
-package src
+package queue
 
 import (
 	"bytes"
@@ -56,7 +56,7 @@ func (t *CallbackTask) init() bool {
 
 func (t *CallbackTask) TaskPoster() {
 	timeout 		:= make(chan bool, 1)
-	requestResult 	:= make(chan bool, 0)
+	requestResult	:= make(chan bool, 0)
 	requestFailed	:= make(chan bool, 0)
 	todoAction		:= make(chan string,0)
 	go func() {
