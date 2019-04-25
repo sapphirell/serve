@@ -2,14 +2,21 @@ package main
 
 import (
 	"fmt"
-	"time"
-	"./queue"
+	"./model"
 	"./active_mq"
+	"./queue"
+	"time"
 )
 
 func main () {
-	listenQueue()
+	//listenQueue()
+	//d := model.DbLinker{}
+	//d.Init()
+	//d.DB.Exec("insert into `vep_request_test` set data = '123' ")
+	m := model.CprOrdersModel{}
+	m.GetOrderDetail(1)
 
+	fmt.Println(m.Ext)
 	return
 }
 
