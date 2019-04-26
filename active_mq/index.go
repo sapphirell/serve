@@ -12,7 +12,7 @@ type ActiveMQInstance struct {
 	Subscription map[string]*stomp.Subscription
 	Test         map[string]string
 }
-
+//
 func (ins *ActiveMQInstance) Init() {
 	configPath 				:= "./config.ini"
 	config, load_conf_err 	:= goconfig.LoadConfigFile(configPath)
