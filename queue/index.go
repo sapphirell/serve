@@ -7,6 +7,7 @@ import (
 	"github.com/tidwall/gjson"
 	"net/http"
 	"time"
+	"../active_mq"
 )
 
 type CallbackTask struct {
@@ -33,11 +34,10 @@ type PostJson struct {
 //channel := make(chan os.Signal)
 //signal.Notify(channel, os.Interrupt, os.Kill)
 //<-channel
-func (t *CallbackTask) StartBy(userData string) int {
+func (t *CallbackTask) StartBy(userData string,mq *active_mq.ActiveMQInstance) {
 	t.UserData  = userData
 	t.init()
-	t.TaskPoster()
-	return 1;
+	t.TaskPoster(userData,mq)
 }
 func (t *CallbackTask) init() bool {
 	if t.UserData == "" {
@@ -54,7 +54,7 @@ func (t *CallbackTask) init() bool {
 	return true
 }
 
-func (t *CallbackTask) TaskPoster() {
+func (t *CallbackTask) TaskPoster(queueName string, mq *active_mq.ActiveMQInstance) {
 	timeout 		:= make(chan bool, 1)
 	requestResult	:= make(chan bool, 0)
 	requestFailed	:= make(chan bool, 0)
@@ -104,10 +104,12 @@ func (t *CallbackTask) TaskPoster() {
 		{
 			fmt.Println("callback timeout!")
 			//TODO:重新加入队列
+			mq.Push(queueName,"")
 		}
 	case <-requestFailed:
 		{
 			fmt.Println( "Request failed!") //TODO:重新加入队列
+			mq.Push(queueName,"")
 		}
 
 	}
