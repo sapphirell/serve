@@ -10,9 +10,6 @@ import (
 
 func main () {
 	listenQueue()
-	//d := model.DbLinker{}
-	//d.Init()
-	//d.DB.Exec("insert into `vep_request_test` set data = '123' ")
 
 	return
 }
