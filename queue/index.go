@@ -26,6 +26,7 @@ type UserData struct {
     RenderTime     float64  `json:"renderTime"`
     RecordId       string   `json:"recordId"`//User's record id
     ResultVideoUrl string   `json:"resultVideoUrl"`//Render video save path
+    NotifyTime     int64    `json:"notifyTime"`
 }
 
 //post to user
@@ -40,58 +41,64 @@ type PostJson struct {
 //signal.Notify(channel, os.Interrupt, os.Kill)
 //<-channel
 func (t *CallbackTask) StartBy(oriData string, mq *active_mq.ActiveMQInstance, queueName string) {
+    var flag int
+    //var s string
     t.OriData   = oriData
-    flag        := t.init()
-    if flag {
-        t.TaskPoster(mq, queueName)
-    }else {
-        println("丢弃任务")
-    }
-
+    flag = t.init()
+    _ =  t.parseFlag(flag, mq, queueName)
 }
 
 //construct `UserData` from queue or db
-func (t *CallbackTask) init() bool {
+func (t *CallbackTask) init() int {
     if t.OriData == "" {
-        return false
+        return 1
     }
     c           := model.CprOrdersModel{}
     tmpUserData := UserData{}
-    tmpUserData.Repeated          = gjson.Get(t.OriData, "repeated").Int() + 1
+    tmpUserData.Repeated          = gjson.Get(t.OriData, "repeated").Int()
     tmpUserData.OrderId           = gjson.Get(t.OriData, "orderId").Int()
     tmpUserData.StatusCode        = gjson.Get(t.OriData, "statusCode").Int()
     tmpUserData.RenderTime        = gjson.Get(t.OriData, "renderTime").Float()
     tmpUserData.ResultVideoUrl    = gjson.Get(t.OriData, "resultVideoUrl").String()
-    if int(t.MaxRepeat) < int(tmpUserData.Repeated) {
+    tmpUserData.NotifyTime        = gjson.Get(t.OriData, "notifyTime").Int()
+
+    if int(t.MaxRepeat) <= int(tmpUserData.Repeated) {
         //save data
         c.SaveOrderResult(tmpUserData.RenderTime, tmpUserData.ResultVideoUrl, 2)
-        return false
+        return 2
     }
-    if tmpUserData.Repeated == 1 {
+    if tmpUserData.Repeated == 0 {
 
         err := c.GetOrderDetail(tmpUserData.OrderId)
         if err != nil {
-            fmt.Println(err)
-            return false
+            fmt.Println(t.OriData)
+            return 4
         }
 
-        tmpUserData.NotifyUrl = c.NotifyUrl
-        tmpUserData.RecordId  = c.RecordId
+        tmpUserData.NotifyUrl  = c.NotifyUrl
+        tmpUserData.RecordId   = c.RecordId
+        tmpUserData.NotifyTime = time.Now().Unix()
 
     } else {
-        tmpUserData.NotifyUrl         = gjson.Get(t.OriData, "notifyUrl").String()
-        tmpUserData.RecordId          = gjson.Get(t.OriData, "recordId").String()
+        tmpUserData.NotifyUrl   = gjson.Get(t.OriData, "notifyUrl").String()
+        tmpUserData.RecordId    = gjson.Get(t.OriData, "recordId").String()
     }
 
     t.UserData = &tmpUserData
-    return true
+
+    if tmpUserData.NotifyTime > time.Now().Unix() {
+        return 3
+    }
+    return 0
 }
 
 func (t *CallbackTask) TaskPoster(mq *active_mq.ActiveMQInstance,queueName string) {
     timeout         := make(chan bool, 1)
     requestResult   := make(chan bool, 0)
     requestFailed   := make(chan bool, 0)
-
+    tmpUserData     := t.UserData
+    tmpUserData.Repeated += 1
+    t.UserData      = tmpUserData
 
     go func() {
         time.Sleep(time.Duration(t.Timeout) * time.Second)
@@ -136,20 +143,41 @@ func (t *CallbackTask) TaskPoster(mq *active_mq.ActiveMQInstance,queueName strin
     case <-timeout:
         {
             fmt.Println("callback timeout!")
-            t.repeatQueue(mq, queueName)
+            t.repeatQueue(mq, queueName, true)
         }
     case <-requestFailed:
         {
             fmt.Println("Request failed!") //TODO:重新加入队列
-            t.repeatQueue(mq, queueName)
+            t.repeatQueue(mq, queueName, true)
         }
 
     }
 }
 
-func (t *CallbackTask) repeatQueue(mq *active_mq.ActiveMQInstance,queueName string) {
-    userData, _ := json2.Marshal(t.UserData)
-    fmt.Println(string(queueName))
+func (t *CallbackTask) repeatQueue(mq *active_mq.ActiveMQInstance, queueName string, interval bool) {
+    tmp := t.UserData
+    if interval {
+        tmp.NotifyTime += 5 //after 5 sec
+    }
+    userData, _ := json2.Marshal(tmp)
+    //fmt.Println(string(queueName))
     mq.Push(queueName, string(userData))
 }
 
+func (t *CallbackTask) parseFlag(flag int, mq *active_mq.ActiveMQInstance,queueName string) string {
+    if flag == 0 {
+        t.TaskPoster(mq, queueName)
+        return "ok"
+    }
+    if flag == 1 {
+        return "Empty JSON"
+    }
+    if flag == 2 {
+        return "over Max Repeat"
+    }
+    if flag == 3 {
+        t.repeatQueue(mq, queueName, false)
+        return "Time not come"
+    }
+    return ""
+}
